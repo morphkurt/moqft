@@ -22,9 +22,14 @@ function showTab(tab: "send" | "receive") {
 tabSend.onclick = () => showTab("send")
 tabReceive.onclick = () => showTab("receive")
 
-// If opened via a share link (#code in fragment, never sent to any server),
-// jump straight to receiving.
-if (location.hash.length > 1) {
+// Parse URL fragment.
+// #s:CODE  → receiver-first: sender opens page with a preset code
+// #CODE    → legacy receiver link: pre-fill the code input
+let presetSendCode: string | undefined
+if (location.hash.startsWith("#s:")) {
+	presetSendCode = location.hash.slice(3)
+	showTab("send")
+} else if (location.hash.length > 1) {
 	$<HTMLInputElement>("code-input").value = location.hash.slice(1)
 	showTab("receive")
 }
@@ -58,18 +63,24 @@ fileInput.onchange = () => {
 async function startSend(file: File) {
 	sender?.stop()
 
-	const code = generateCode()
+	// Receiver-first: use the code they generated; otherwise generate our own.
+	const code = presetSendCode ? normalizeCode(presetSendCode) : generateCode()
 	const keys = await deriveKeys(code)
 
 	dropzone.hidden = true
 	$("send-session").hidden = false
 
-	const codeEl = $("code")
-	codeEl.textContent = formatCode(code)
-	codeEl.onclick = () => void navigator.clipboard.writeText(formatCode(code))
-
-	const shareUrl = `${location.origin}${location.pathname}#${formatCode(code)}`
-	await QRCode.toCanvas($<HTMLCanvasElement>("qr"), shareUrl, { width: 180, margin: 0 })
+	if (!presetSendCode) {
+		// Sender-first: show code and QR for the receiver to scan/enter.
+		$("send-session-share").hidden = false
+		const codeEl = $("code")
+		codeEl.textContent = formatCode(code)
+		codeEl.onclick = () => void navigator.clipboard.writeText(formatCode(code))
+		const shareUrl = `${location.origin}${location.pathname}#${formatCode(code)}`
+		await QRCode.toCanvas($<HTMLCanvasElement>("qr"), shareUrl, { width: 180, margin: 0 })
+	} else {
+		$("send-session-share").hidden = true
+	}
 
 	sendProgress.hidden = false
 	sender = new Sender()
@@ -112,6 +123,19 @@ receiveBtn.onclick = async () => {
 	receiveProgress.hidden = false
 	$("download-area").innerHTML = ""
 
+	// Open the save picker now, while we still have the user gesture context.
+	// We don't know the filename yet so suggest "download"; the actual name
+	// is shown in the status line once metadata arrives.
+	let writable: FileSystemWritableFileStream | undefined
+	if ("showSaveFilePicker" in window) {
+		try {
+			const handle = await (window as any).showSaveFilePicker({ suggestedName: "download" }) as FileSystemFileHandle
+			writable = await handle.createWritable()
+		} catch {
+			// User cancelled or browser blocked — fall back to blob download.
+		}
+	}
+
 	const receiver = new Receiver()
 	try {
 		const keys = await deriveKeys(code)
@@ -120,20 +144,97 @@ receiveBtn.onclick = async () => {
 			keys,
 			(status) => (receiveStatus.textContent = status),
 			(p: Progress) => (receiveProgress.value = p.total ? (100 * p.sentOrReceived) / p.total : 100),
+			writable,
 		)
 
 		receiveStatus.textContent = `received ${metadata.name} (${metadata.size.toLocaleString()} bytes)`
-		const url = URL.createObjectURL(blob)
-		const a = document.createElement("a")
-		a.href = url
-		a.download = metadata.name
-		a.textContent = `Save ${metadata.name}`
-		$("download-area").append(a)
-		a.click()
+
+		if (!writable) {
+			const url = URL.createObjectURL(blob!)
+			const a = document.createElement("a")
+			a.href = url
+			a.download = metadata.name
+			a.textContent = `Save ${metadata.name}`
+			$("download-area").append(a)
+			a.click()
+		}
 	} catch (e) {
 		receiver.stop()
+		await writable?.abort().catch(() => {})
 		receiveStatus.textContent = `error: ${(e as Error).message}`
 	} finally {
 		receiveBtn.disabled = false
 	}
+}
+
+// --- Prepare to receive (receiver-first flow) ---
+
+let prepareReceiver: Receiver | undefined
+
+$("prepare-btn").onclick = async () => {
+	const code = generateCode()
+
+	$("receive-entry").hidden = true
+	$("receive-prepare").hidden = false
+	receiveStatus.textContent = ""
+	receiveProgress.hidden = false
+	receiveProgress.value = 0
+	$("download-area").innerHTML = ""
+
+	const prepareCode = $("prepare-code")
+	prepareCode.textContent = formatCode(code)
+
+	const shareUrl = `${location.origin}${location.pathname}#s:${formatCode(code)}`
+	await QRCode.toCanvas($<HTMLCanvasElement>("prepare-qr"), shareUrl, { width: 180, margin: 0 })
+
+	// Open save picker now, while we still have the button-click gesture context.
+	let writable: FileSystemWritableFileStream | undefined
+	if ("showSaveFilePicker" in window) {
+		try {
+			const handle = await (window as any).showSaveFilePicker({ suggestedName: "download" }) as FileSystemFileHandle
+			writable = await handle.createWritable()
+		} catch {
+			// cancelled or unsupported
+		}
+	}
+
+	receiveStatus.textContent = "waiting for sender…"
+
+	prepareReceiver = new Receiver()
+	try {
+		const keys = await deriveKeys(code)
+		const { metadata, blob } = await prepareReceiver.receive(
+			relayInput.value,
+			keys,
+			(status) => (receiveStatus.textContent = status),
+			(p: Progress) => (receiveProgress.value = p.total ? (100 * p.sentOrReceived) / p.total : 100),
+			writable,
+		)
+
+		receiveStatus.textContent = `received ${metadata.name} (${metadata.size.toLocaleString()} bytes)`
+
+		if (!writable && blob) {
+			const url = URL.createObjectURL(blob)
+			const a = document.createElement("a")
+			a.href = url
+			a.download = metadata.name
+			a.textContent = `Save ${metadata.name}`
+			$("download-area").append(a)
+			a.click()
+		}
+	} catch (e) {
+		await writable?.abort().catch(() => {})
+		if (!(e instanceof Error && e.message === "cancelled")) {
+			receiveStatus.textContent = `error: ${(e as Error).message}`
+		}
+	} finally {
+		prepareReceiver = undefined
+		$("receive-prepare").hidden = true
+		$("receive-entry").hidden = false
+	}
+}
+
+$("prepare-cancel").onclick = async () => {
+	await prepareReceiver?.stop()
+	prepareReceiver = undefined
 }

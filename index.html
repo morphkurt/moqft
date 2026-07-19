@@ -24,9 +24,11 @@
 					<input type="file" id="file-input" hidden />
 				</div>
 				<div id="send-session" hidden>
-					<p class="hint">Share this code (or QR) with the receiver — it is the only secret:</p>
-					<p id="code" class="code"></p>
-					<canvas id="qr"></canvas>
+					<div id="send-session-share">
+						<p class="hint">Share this code (or QR) with the receiver — it is the only secret:</p>
+						<p id="code" class="code"></p>
+						<canvas id="qr"></canvas>
+					</div>
 					<p id="send-status" class="status"></p>
 					<progress id="send-progress" max="100" value="0" hidden></progress>
 					<button id="send-cancel" class="secondary">Cancel</button>
@@ -34,9 +36,19 @@
 			</section>
 
 			<section id="pane-receive" hidden>
-				<label for="code-input" class="hint">Enter the transfer code:</label>
-				<input id="code-input" type="text" autocomplete="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx" />
-				<button id="receive-btn">Receive</button>
+				<div id="receive-entry">
+					<label for="code-input" class="hint">Enter the transfer code:</label>
+					<input id="code-input" type="text" autocomplete="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx" />
+					<button id="receive-btn">Receive</button>
+					<p class="hint">— or —</p>
+					<button id="prepare-btn" class="secondary">Prepare to receive</button>
+				</div>
+				<div id="receive-prepare" hidden>
+					<p class="hint">Share this with the sender — they scan to send you a file:</p>
+					<p id="prepare-code" class="code"></p>
+					<canvas id="prepare-qr"></canvas>
+					<button id="prepare-cancel" class="secondary">Cancel</button>
+				</div>
 				<p id="receive-status" class="status"></p>
 				<progress id="receive-progress" max="100" value="0" hidden></progress>
 				<p id="download-area"></p>

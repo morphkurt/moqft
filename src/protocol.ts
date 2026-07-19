@@ -177,7 +177,8 @@ export class Receiver {
 		keys: TransferKeys,
 		onStatus: (status: string) => void,
 		onProgress: (p: Progress) => void,
-	): Promise<{ metadata: FileMetadata; blob: Blob }> {
+		writable?: FileSystemWritableFileStream,
+	): Promise<{ metadata: FileMetadata; blob?: Blob }> {
 		const client = await MOQtailClient.new({
 			url: relay,
 			setupParameters: new SetupParameters().addMaxRequestId(1024),
@@ -198,7 +199,8 @@ export class Receiver {
 
 		onStatus("waiting for data")
 		let metadata: FileMetadata | undefined
-		const chunks = new Map<number, Uint8Array>()
+		const chunks = writable ? undefined : new Map<number, Uint8Array>()
+		let receivedChunks = 0
 		let receivedBytes = 0
 
 		const reader = result.stream.getReader()
@@ -215,15 +217,24 @@ export class Receiver {
 					metadata = JSON.parse(new TextDecoder().decode(plain)) as FileMetadata
 					onStatus(`receiving ${metadata.name}`)
 				} else {
-					chunks.set(seq, plain)
+					if (writable) {
+						await writable.write(plain as Uint8Array<ArrayBuffer>)
+					} else {
+						chunks!.set(seq, plain)
+					}
+					receivedChunks++
 					receivedBytes += plain.byteLength
 					if (metadata) onProgress({ sentOrReceived: receivedBytes, total: metadata.size })
 				}
 
-				if (metadata && chunks.size === metadata.totalChunks) {
+				if (metadata && receivedChunks === metadata.totalChunks) {
+					if (writable) {
+						await writable.close()
+						return { metadata }
+					}
 					const parts: Uint8Array<ArrayBuffer>[] = []
 					for (let i = 1; i <= metadata.totalChunks; i++) {
-						const part = chunks.get(i)
+						const part = chunks!.get(i)
 						if (!part) throw new Error(`missing chunk ${i}`)
 						parts.push(part as Uint8Array<ArrayBuffer>)
 					}

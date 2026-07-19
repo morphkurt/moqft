@@ -74,7 +74,8 @@ h1 {
 	cursor: pointer;
 }
 
-#qr {
+#qr,
+#prepare-qr {
 	display: block;
 	margin: 0.5rem auto;
 	border-radius: 8px;
