@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>moqft — secure file transfer over MoQ</title>
+		<link rel="stylesheet" href="/src/style.css" />
+	</head>
+	<body>
+		<main>
+			<header>
+				<h1>moqft</h1>
+				<p class="tagline">AirDrop-style transfers over Cloudflare's MoQ relay. End-to-end encrypted — the relay only ever sees ciphertext.</p>
+			</header>
+
+			<nav class="tabs">
+				<button id="tab-send" class="active">Send</button>
+				<button id="tab-receive">Receive</button>
+			</nav>
+
+			<section id="pane-send">
+				<div id="dropzone" tabindex="0">
+					<p><strong>Drop a file here</strong> or click to choose</p>
+					<input type="file" id="file-input" hidden />
+				</div>
+				<div id="send-session" hidden>
+					<p class="hint">Share this code (or QR) with the receiver — it is the only secret:</p>
+					<p id="code" class="code"></p>
+					<canvas id="qr"></canvas>
+					<p id="send-status" class="status"></p>
+					<progress id="send-progress" max="100" value="0" hidden></progress>
+					<button id="send-cancel" class="secondary">Cancel</button>
+				</div>
+			</section>
+
+			<section id="pane-receive" hidden>
+				<label for="code-input" class="hint">Enter the transfer code:</label>
+				<input id="code-input" type="text" autocomplete="off" spellcheck="false" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx" />
+				<button id="receive-btn">Receive</button>
+				<p id="receive-status" class="status"></p>
+				<progress id="receive-progress" max="100" value="0" hidden></progress>
+				<p id="download-area"></p>
+			</section>
+
+			<footer>
+				<label class="hint" for="relay">Relay:</label>
+				<input id="relay" type="text" />
+			</footer>
+		</main>
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>
