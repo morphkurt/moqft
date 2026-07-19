@@ -9,10 +9,11 @@
 //                reveals nothing about the secret thanks to HKDF)
 //   data key  -> AES-256-GCM key for the file contents
 //
-// Each MoQ object is encrypted independently with a counter nonce (object
-// sequence number). The key is unique per transfer, so counter nonces never
-// repeat under the same key. GCM authentication means a wrong code or a
-// tampering relay yields a decrypt failure, not corrupt output.
+// Each MoQ object is encrypted independently with a 96-bit nonce whose
+// layout is: [4 bytes TrackDomain][8 bytes object-seq big-endian].
+// Partitioning by domain ensures the same (key, seq) pair is never reused
+// across different tracks (meta/file/repair/nack) even though they share
+// the single data key.
 
 const SALT = new TextEncoder().encode("moqft/v1")
 
@@ -24,6 +25,15 @@ export interface TransferKeys {
 	pathId: string
 	// AES-256-GCM key for file data; never leaves the client.
 	dataKey: CryptoKey
+}
+
+// Domain tag occupies the first 4 bytes of the 96-bit GCM nonce, ensuring
+// objects on different tracks never share a (key, nonce) pair.
+export const enum TrackDomain {
+	Meta   = 0,
+	File   = 1,
+	Repair = 2,
+	Nack   = 3,
 }
 
 export function generateCode(): string {
@@ -38,23 +48,13 @@ export async function deriveKeys(code: string): Promise<TransferKeys> {
 	const ikm = await crypto.subtle.importKey("raw", secret as any, "HKDF", false, ["deriveBits", "deriveKey"])
 
 	const pathBits = await crypto.subtle.deriveBits(
-		{ 
-			name: "HKDF", 
-			hash: "SHA-256", 
-			salt: SALT as any, 
-			info: new TextEncoder().encode("path") as any 
-		},
+		{ name: "HKDF", hash: "SHA-256", salt: SALT as any, info: new TextEncoder().encode("path") as any },
 		ikm,
 		128,
 	)
 
 	const dataKey = await crypto.subtle.deriveKey(
-		{ 
-			name: "HKDF", 
-			hash: "SHA-256", 
-			salt: SALT as any, 
-			info: new TextEncoder().encode("data") as any 
-		},
+		{ name: "HKDF", hash: "SHA-256", salt: SALT as any, info: new TextEncoder().encode("data") as any },
 		ikm,
 		{ name: "AES-GCM", length: 256 },
 		false,
@@ -65,15 +65,15 @@ export async function deriveKeys(code: string): Promise<TransferKeys> {
 	return { pathId, dataKey }
 }
 
-export async function encryptObject(keys: TransferKeys, seq: number, plaintext: Uint8Array): Promise<Uint8Array> {
-	const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce(seq) as any }, keys.dataKey, plaintext as any)
+export async function encryptObject(keys: TransferKeys, domain: TrackDomain, seq: number, plaintext: Uint8Array): Promise<Uint8Array> {
+	const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce(domain, seq) as any }, keys.dataKey, plaintext as any)
 	return new Uint8Array(ct)
 }
 
-export async function decryptObject(keys: TransferKeys, seq: number, ciphertext: Uint8Array): Promise<Uint8Array> {
+export async function decryptObject(keys: TransferKeys, domain: TrackDomain, seq: number, ciphertext: Uint8Array): Promise<Uint8Array> {
 	try {
 		const pt = await crypto.subtle.decrypt(
-			{ name: "AES-GCM", iv: nonce(seq) as any },
+			{ name: "AES-GCM", iv: nonce(domain, seq) as any },
 			keys.dataKey,
 			ciphertext as any,
 		)
@@ -83,11 +83,12 @@ export async function decryptObject(keys: TransferKeys, seq: number, ciphertext:
 	}
 }
 
-// 96-bit big-endian counter nonce. Binding the object sequence number into
-// the nonce also prevents the relay reordering or replaying chunks.
-function nonce(seq: number): Uint8Array {
+// 96-bit nonce: [4-byte domain][8-byte big-endian seq]
+function nonce(domain: TrackDomain, seq: number): Uint8Array {
 	const iv = new Uint8Array(12)
-	new DataView(iv.buffer).setBigUint64(4, BigInt(seq))
+	const dv = new DataView(iv.buffer)
+	dv.setUint32(0, domain)
+	dv.setBigUint64(4, BigInt(seq))
 	return iv
 }
 

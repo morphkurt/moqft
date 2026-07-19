@@ -112,6 +112,35 @@ const receiveBtn = $<HTMLButtonElement>("receive-btn")
 const receiveStatus = $("receive-status")
 const receiveProgress = $<HTMLProgressElement>("receive-progress")
 
+// Offer streaming-to-disk via File System Access API when available.
+// Opens the picker inside the click handler (user-gesture context required).
+// Returns undefined if the user cancels or the API is unavailable.
+async function openWritable(suggestedName: string): Promise<FileSystemWritableFileStream | undefined> {
+	if (!("showSaveFilePicker" in window)) return undefined
+	try {
+		const handle = await (window as any).showSaveFilePicker({ suggestedName }) as FileSystemFileHandle
+		return handle.createWritable()
+	} catch {
+		return undefined
+	}
+}
+
+// Write blob to an open writable stream, or trigger a browser download.
+async function saveFile(blob: Blob, name: string, writable?: FileSystemWritableFileStream) {
+	if (writable) {
+		await writable.write(blob)
+		await writable.close()
+		return
+	}
+	const url = URL.createObjectURL(blob)
+	const a = document.createElement("a")
+	a.href = url
+	a.download = name
+	a.textContent = `Save ${name}`
+	$("download-area").append(a)
+	a.click()
+}
+
 receiveBtn.onclick = async () => {
 	const code = normalizeCode($<HTMLInputElement>("code-input").value)
 	if (code.length < 26) {
@@ -123,18 +152,8 @@ receiveBtn.onclick = async () => {
 	receiveProgress.hidden = false
 	$("download-area").innerHTML = ""
 
-	// Open the save picker now, while we still have the user gesture context.
-	// We don't know the filename yet so suggest "download"; the actual name
-	// is shown in the status line once metadata arrives.
-	let writable: FileSystemWritableFileStream | undefined
-	if ("showSaveFilePicker" in window) {
-		try {
-			const handle = await (window as any).showSaveFilePicker({ suggestedName: "download" }) as FileSystemFileHandle
-			writable = await handle.createWritable()
-		} catch {
-			// User cancelled or browser blocked — fall back to blob download.
-		}
-	}
+	// Open save picker now while we still have the user gesture context.
+	const writable = await openWritable("download")
 
 	const receiver = new Receiver()
 	try {
@@ -144,20 +163,10 @@ receiveBtn.onclick = async () => {
 			keys,
 			(status) => (receiveStatus.textContent = status),
 			(p: Progress) => (receiveProgress.value = p.total ? (100 * p.sentOrReceived) / p.total : 100),
-			writable,
 		)
 
 		receiveStatus.textContent = `received ${metadata.name} (${metadata.size.toLocaleString()} bytes)`
-
-		if (!writable) {
-			const url = URL.createObjectURL(blob!)
-			const a = document.createElement("a")
-			a.href = url
-			a.download = metadata.name
-			a.textContent = `Save ${metadata.name}`
-			$("download-area").append(a)
-			a.click()
-		}
+		await saveFile(blob, metadata.name, writable)
 	} catch (e) {
 		receiver.stop()
 		await writable?.abort().catch(() => {})
@@ -170,7 +179,6 @@ receiveBtn.onclick = async () => {
 // --- Prepare to receive (receiver-first flow) ---
 
 let prepareReceiver: Receiver | undefined
-
 let prepareCode = ""
 
 $("prepare-btn").onclick = async () => {
@@ -206,14 +214,7 @@ $("prepare-start").onclick = async () => {
 		)
 
 		receiveStatus.textContent = `received ${metadata.name} (${metadata.size.toLocaleString()} bytes)`
-
-		const url = URL.createObjectURL(blob!)
-		const a = document.createElement("a")
-		a.href = url
-		a.download = metadata.name
-		a.textContent = `Save ${metadata.name}`
-		$("download-area").append(a)
-		a.click()
+		await saveFile(blob, metadata.name)
 	} catch (e) {
 		if (!(e instanceof Error && e.message === "cancelled")) {
 			receiveStatus.textContent = `error: ${(e as Error).message}`
