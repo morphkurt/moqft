@@ -187,17 +187,6 @@ $("prepare-btn").onclick = async () => {
 	const shareUrl = `${location.origin}${location.pathname}#s:${formatCode(code)}`
 	await QRCode.toCanvas($<HTMLCanvasElement>("prepare-qr"), shareUrl, { width: 180, margin: 0 })
 
-	// Open save picker now, while we still have the button-click gesture context.
-	let writable: FileSystemWritableFileStream | undefined
-	if ("showSaveFilePicker" in window) {
-		try {
-			const handle = await (window as any).showSaveFilePicker({ suggestedName: "download" }) as FileSystemFileHandle
-			writable = await handle.createWritable()
-		} catch {
-			// cancelled or unsupported
-		}
-	}
-
 	receiveStatus.textContent = "waiting for sender…"
 
 	prepareReceiver = new Receiver()
@@ -208,22 +197,18 @@ $("prepare-btn").onclick = async () => {
 			keys,
 			(status) => (receiveStatus.textContent = status),
 			(p: Progress) => (receiveProgress.value = p.total ? (100 * p.sentOrReceived) / p.total : 100),
-			writable,
 		)
 
 		receiveStatus.textContent = `received ${metadata.name} (${metadata.size.toLocaleString()} bytes)`
 
-		if (!writable && blob) {
-			const url = URL.createObjectURL(blob)
-			const a = document.createElement("a")
-			a.href = url
-			a.download = metadata.name
-			a.textContent = `Save ${metadata.name}`
-			$("download-area").append(a)
-			a.click()
-		}
+		const url = URL.createObjectURL(blob!)
+		const a = document.createElement("a")
+		a.href = url
+		a.download = metadata.name
+		a.textContent = `Save ${metadata.name}`
+		$("download-area").append(a)
+		a.click()
 	} catch (e) {
-		await writable?.abort().catch(() => {})
 		if (!(e instanceof Error && e.message === "cancelled")) {
 			receiveStatus.textContent = `error: ${(e as Error).message}`
 		}
