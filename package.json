@@ -15,7 +15,7 @@
 	},
 	"devDependencies": {
 		"@types/qrcode": "^1.5.5",
-		"@typescript/lib-dom": "npm:@types/web@^0.0.115",
+		"@types/web": "^0.0.115",
 		"playwright": "^1.61.1",
 		"typescript": "^5.5.0",
 		"vite": "^6.0.0"
