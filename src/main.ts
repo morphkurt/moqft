@@ -171,27 +171,33 @@ receiveBtn.onclick = async () => {
 
 let prepareReceiver: Receiver | undefined
 
+let prepareCode = ""
+
 $("prepare-btn").onclick = async () => {
-	const code = generateCode()
+	prepareCode = generateCode()
 
 	$("receive-entry").hidden = true
 	$("receive-prepare").hidden = false
+	$("prepare-actions").hidden = false
 	receiveStatus.textContent = ""
-	receiveProgress.hidden = false
+	receiveProgress.hidden = true
 	receiveProgress.value = 0
 	$("download-area").innerHTML = ""
 
-	const prepareCode = $("prepare-code")
-	prepareCode.textContent = formatCode(code)
+	$("prepare-code").textContent = formatCode(prepareCode)
 
-	const shareUrl = `${location.origin}${location.pathname}#s:${formatCode(code)}`
+	const shareUrl = `${location.origin}${location.pathname}#s:${formatCode(prepareCode)}`
 	await QRCode.toCanvas($<HTMLCanvasElement>("prepare-qr"), shareUrl, { width: 180, margin: 0 })
+}
 
-	receiveStatus.textContent = "waiting for sender…"
+$("prepare-start").onclick = async () => {
+	$("prepare-actions").hidden = true
+	receiveProgress.hidden = false
+	receiveStatus.textContent = "subscribing…"
 
 	prepareReceiver = new Receiver()
 	try {
-		const keys = await deriveKeys(code)
+		const keys = await deriveKeys(prepareCode)
 		const { metadata, blob } = await prepareReceiver.receive(
 			relayInput.value,
 			keys,
@@ -222,4 +228,6 @@ $("prepare-btn").onclick = async () => {
 $("prepare-cancel").onclick = async () => {
 	await prepareReceiver?.stop()
 	prepareReceiver = undefined
+	$("receive-prepare").hidden = true
+	$("receive-entry").hidden = false
 }

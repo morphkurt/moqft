@@ -47,7 +47,10 @@
 					<p class="hint">Share this with the sender — they scan to send you a file:</p>
 					<p id="prepare-code" class="code"></p>
 					<canvas id="prepare-qr"></canvas>
-					<button id="prepare-cancel" class="secondary">Cancel</button>
+					<div id="prepare-actions">
+						<button id="prepare-start">Wait for sender</button>
+						<button id="prepare-cancel" class="secondary">Cancel</button>
+					</div>
 				</div>
 				<p id="receive-status" class="status"></p>
 				<progress id="receive-progress" max="100" value="0" hidden></progress>
