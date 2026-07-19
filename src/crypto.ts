@@ -35,16 +35,26 @@ export async function deriveKeys(code: string): Promise<TransferKeys> {
 	const secret = decodeBase32(normalizeCode(code))
 	if (secret.length != 16) throw new Error("invalid code")
 
-	const ikm = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveBits", "deriveKey"])
+	const ikm = await crypto.subtle.importKey("raw", secret as any, "HKDF", false, ["deriveBits", "deriveKey"])
 
 	const pathBits = await crypto.subtle.deriveBits(
-		{ name: "HKDF", hash: "SHA-256", salt: SALT, info: new TextEncoder().encode("path") },
+		{ 
+			name: "HKDF", 
+			hash: "SHA-256", 
+			salt: SALT as any, 
+			info: new TextEncoder().encode("path") as any 
+		},
 		ikm,
 		128,
 	)
 
 	const dataKey = await crypto.subtle.deriveKey(
-		{ name: "HKDF", hash: "SHA-256", salt: SALT, info: new TextEncoder().encode("data") },
+		{ 
+			name: "HKDF", 
+			hash: "SHA-256", 
+			salt: SALT as any, 
+			info: new TextEncoder().encode("data") as any 
+		},
 		ikm,
 		{ name: "AES-GCM", length: 256 },
 		false,
@@ -56,16 +66,16 @@ export async function deriveKeys(code: string): Promise<TransferKeys> {
 }
 
 export async function encryptObject(keys: TransferKeys, seq: number, plaintext: Uint8Array): Promise<Uint8Array> {
-	const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce(seq) }, keys.dataKey, plaintext)
+	const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce(seq) as any }, keys.dataKey, plaintext as any)
 	return new Uint8Array(ct)
 }
 
 export async function decryptObject(keys: TransferKeys, seq: number, ciphertext: Uint8Array): Promise<Uint8Array> {
 	try {
 		const pt = await crypto.subtle.decrypt(
-			{ name: "AES-GCM", iv: nonce(seq) },
+			{ name: "AES-GCM", iv: nonce(seq) as any },
 			keys.dataKey,
-			ciphertext,
+			ciphertext as any,
 		)
 		return new Uint8Array(pt)
 	} catch {
